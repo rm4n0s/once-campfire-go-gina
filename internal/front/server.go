@@ -39,12 +39,27 @@ const (
 	typeHTTPS    gina.TypeID = 210
 )
 
+// Extension is a component that lives in the same gina system as the HTTP servers
+// (an isolate type and perhaps a shard of its own), such as the Web Push sender.
+type Extension interface {
+	// Install adds the component to the spec, after the HTTP servers and the
+	// realtime bus. The last shard of the spec is a service shard, never one that
+	// runs HTTP handlers, so a handler may wait on the component without blocking it.
+	Install(spec *gina.SystemSpec) error
+	// Attach is called once the system exists, before it runs.
+	Attach(sys *gina.System) error
+	// Close releases what Attach started; called when the server stops.
+	Close()
+}
+
 // Server is a running front server.
 type Server struct {
 	sys      *gina.System
 	cancel   context.CancelFunc
 	done     chan struct{}
 	stopOnce sync.Once
+
+	extensions []Extension
 
 	// Ports are the ports actually bound (useful when a configured port is 0).
 	TargetPort, HTTPPort, HTTPSPort int
@@ -55,17 +70,17 @@ type Server struct {
 //
 // Public listeners are dual-stack ("::" accepts IPv4 and IPv6, like Go's ":port");
 // on a host without IPv6 they fall back to IPv4 only.
-func Start(cfg Config, app httpx.Handler, hub *cable.Hub) (*Server, error) {
+func Start(cfg Config, app httpx.Handler, hub *cable.Hub, extensions ...Extension) (*Server, error) {
 	ip := netip.IPv6Unspecified()
 	if probe, err := net.Listen("tcp6", "[::1]:0"); err != nil {
 		ip = netip.IPv4Unspecified()
 	} else {
 		probe.Close()
 	}
-	return start(cfg, app, hub, ip)
+	return start(cfg, app, hub, ip, extensions)
 }
 
-func start(cfg Config, app httpx.Handler, hub *cable.Hub, publicIP netip.Addr) (*Server, error) {
+func start(cfg Config, app httpx.Handler, hub *cable.Hub, publicIP netip.Addr, extensions []Extension) (*Server, error) {
 	if cfg.Shards < 1 {
 		cfg.Shards = 1
 	}
@@ -193,6 +208,14 @@ func start(cfg Config, app httpx.Handler, hub *cable.Hub, publicIP netip.Addr) (
 	if hub != nil {
 		hub.Install(&spec, typeBus)
 	}
+	if hub == nil && len(extensions) > 0 {
+		spec.Shards = append(spec.Shards, gina.ShardSpec{}) // a service shard of its own
+	}
+	for _, e := range extensions {
+		if err := e.Install(&spec); err != nil {
+			return nil, err
+		}
+	}
 	sys, err := gina.NewSystem(spec, gina.Options{})
 	if err != nil {
 		var details []string
@@ -213,6 +236,16 @@ func start(cfg Config, app httpx.Handler, hub *cable.Hub, publicIP netip.Addr) (
 	if hub != nil {
 		hub.Attach(sys)
 	}
+	for _, e := range extensions {
+		if err := e.Attach(sys); err != nil {
+			for _, started := range extensions {
+				started.Close()
+			}
+			sys.Close()
+			return nil, err
+		}
+	}
+	srv.extensions = extensions
 	ctx, cancel := context.WithCancel(context.Background())
 	srv.cancel = cancel
 	sys.Start(gina.RunOptions{Pin: cfg.Pin, ShutdownGrace: 5 * time.Second})
@@ -227,6 +260,9 @@ func start(cfg Config, app httpx.Handler, hub *cable.Hub, publicIP netip.Addr) (
 func (s *Server) Stop() {
 	s.stopOnce.Do(func() {
 		s.cancel()
+		for _, e := range s.extensions {
+			e.Close()
+		}
 		s.sys.Stop()
 		<-s.done
 		s.sys.Close()
@@ -237,8 +273,8 @@ func (s *Server) Stop() {
 func (s *Server) Done() <-chan struct{} { return s.done }
 
 // Serve starts the front server and runs it until ctx is cancelled.
-func Serve(ctx context.Context, cfg Config, app httpx.Handler, hub *cable.Hub) error {
-	srv, err := Start(cfg, app, hub)
+func Serve(ctx context.Context, cfg Config, app httpx.Handler, hub *cable.Hub, extensions ...Extension) error {
+	srv, err := Start(cfg, app, hub, extensions...)
 	if err != nil {
 		return err
 	}

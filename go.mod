@@ -10,6 +10,6 @@ require (
 	golang.org/x/net v0.59.0
 )
 
-require github.com/rm4n0s/gina v0.0.0-20261007161632-9b9a51684d5f
+require github.com/rm4n0s/gina v0.0.0-20261007194033-181727a33be9
 
 require golang.org/x/text v0.42.0 // indirect

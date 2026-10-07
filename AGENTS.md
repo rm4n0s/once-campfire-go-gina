@@ -7,7 +7,8 @@ submodule; the Rails source is `reference/reference/`). Do not edit `reference/`
 
 - Handlers are written against `internal/httpx` (not `net/http`). `internal/front` is the only
   place that talks to gina's HTTP servers; `internal/cable` is the only place that talks to gina's
-  WebSocket server. `net/http` belongs to outbound clients (`internal/integrations`) and tests.
+  WebSocket server; `internal/push` is the only place that talks to gina's Web Push sender.
+  `net/http` belongs to outbound clients (`internal/integrations`) and tests.
 - gina runs handlers synchronously on shard threads and shares one heap: state shared across
   requests (the web `Server`, the cable `Hub`) must be safe for concurrent use. Never block a
   handler on something slow if it can go through `internal/jobs`.

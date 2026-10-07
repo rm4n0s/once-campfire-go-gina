@@ -29,8 +29,8 @@ func testApp(t *testing.T) (*Server, *fronttest.Server, *http.Cookie, database.U
 }
 
 // testAppWith is testApp over a chosen protocol (plain HTTP/1.1, h2c, or TLS with
-// HTTP/2 negotiated by ALPN).
-func testAppWith(t *testing.T, options fronttest.Options) (*Server, *fronttest.Server, *http.Cookie, database.User) {
+// HTTP/2 negotiated by ALPN). prepare functions run on the app before its server starts.
+func testAppWith(t *testing.T, options fronttest.Options, prepare ...func(*Server)) (*Server, *fronttest.Server, *http.Cookie, database.User) {
 	t.Helper()
 	root := t.TempDir()
 	db, err := database.Open(filepath.Join(root, "test.sqlite3"), 4)
@@ -59,6 +59,10 @@ func testAppWith(t *testing.T, options fronttest.Options) (*Server, *fronttest.S
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, p := range prepare {
+		p(app) // before the system exists
+	}
+	options.Extensions = append(options.Extensions, app.Push)
 	server := fronttest.NewServerWith(t, app, app.Cable, options)
 	return app, server, &http.Cookie{Name: "session_token", Value: rails.EscapeCookie(signed)}, user
 }

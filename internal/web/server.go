@@ -22,6 +22,7 @@ import (
 	"github.com/rm4n0s/once-campfire-go-gina/internal/database"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/integrations"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/jobs"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/push"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/rails"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/responsebody"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/storage"
@@ -38,7 +39,7 @@ type Server struct {
 	fragments      *fragmentCache
 	Webhooks       *integrations.WebhookClient
 	Jobs           *jobs.Runner
-	Push           *integrations.PushSender
+	Push           *push.Service
 	Unfurler       *integrations.Unfurler
 	Storage        *storage.Store
 	Cable          *cable.Hub
@@ -407,8 +408,8 @@ func (s *Server) render(w httpx.ResponseWriter, r *httpx.Request, name string, s
 	p.Platform = requestAgent(r).View()
 	p.Screen = name
 	p.Chat = name == "room" && p.Room.ID != 0
-	if s.Push.VAPID != nil {
-		p.VAPIDPublicKey = s.Push.VAPID.PublicKey()
+	if s.Push.Enabled() {
+		p.VAPIDPublicKey = s.Push.PublicKey()
 	}
 	// Keep the refresh cursor at the room version read before the message query.
 	// A render-time clock could skip a message committed between query and render.

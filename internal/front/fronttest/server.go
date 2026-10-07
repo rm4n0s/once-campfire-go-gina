@@ -38,6 +38,10 @@ type Options struct {
 	Mode   Mode
 	Shards int
 	Config func(*front.Config)
+	// NoHub starts the system without the realtime bus even if a hub is given.
+	NoHub bool
+	// Extensions run in the same gina system as the server (Web Push, ...).
+	Extensions []front.Extension
 }
 
 // NewServer starts a plain HTTP/1.1 server (like httptest.NewServer).
@@ -69,7 +73,10 @@ func NewServerWith(t testing.TB, app httpx.Handler, hub *cable.Hub, o Options) *
 	if o.Config != nil {
 		o.Config(&cfg)
 	}
-	srv, err := front.Start(cfg, app, hub)
+	if o.NoHub {
+		hub = nil
+	}
+	srv, err := front.Start(cfg, app, hub, o.Extensions...)
 	if err != nil {
 		t.Fatalf("start front server: %v", err)
 	}

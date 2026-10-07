@@ -18,6 +18,7 @@ import (
 	"github.com/rm4n0s/once-campfire-go-gina/internal/database"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/integrations"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/jobs"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/push"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/rails"
 )
 
@@ -30,7 +31,7 @@ func (s *Server) initJobs() {
 	}
 	s.Jobs = jobs.New(concurrency, "push", "webhook", "purge", "ban", "analyze")
 	s.initCleanup()
-	var vapid *integrations.VAPID
+	s.Push = push.Disabled()
 	if public, private := os.Getenv("VAPID_PUBLIC_KEY"), os.Getenv("VAPID_PRIVATE_KEY"); public != "" &&
 		private != "" {
 		subject := os.Getenv("VAPID_SUBJECT")
@@ -42,13 +43,12 @@ func (s *Server) initJobs() {
 				subject = "https://github.com/rm4n0s/once-campfire-go-gina"
 			}
 		}
-		var err error
-		vapid, err = integrations.NewVAPID(subject, public, private)
-		if err != nil {
+		if sender, err := push.New(subject, public, private); err != nil {
 			slog.Error("Web Push disabled", "error", err)
+		} else {
+			s.Push = sender
 		}
 	}
-	s.Push = integrations.NewPushSender(vapid)
 	s.mux.HandleFunc("GET /users/{user}/push_subscriptions", s.auth(s.pushSubscriptions))
 	s.mux.HandleFunc("POST /users/{user}/push_subscriptions", s.auth(s.pushSubscriptions))
 	s.mux.HandleFunc(
@@ -202,8 +202,12 @@ func (s *Server) testPushNotification(w httpx.ResponseWriter, r *httpx.Request, 
 		s.fail(w, err)
 		return
 	}
+	// This handler holds its shard thread while the push service answers, so it
+	// does not wait for the sender's full retry schedule.
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
 	err = s.Push.Send(
-		r.Context(),
+		ctx,
 		subscription.Endpoint,
 		subscription.Key,
 		subscription.Auth,
@@ -227,7 +231,7 @@ func (s *Server) messageCreated(message database.Message, room database.Room) {
 			s.Cable.PublishStream(ctx, fmt.Sprintf("user_%d_unreads", id), map[string]any{"roomId": room.ID})
 		}
 	}
-	if s.Push.VAPID == nil {
+	if !s.Push.Enabled() {
 		return
 	}
 	mentions := s.mentionedIDs(ctx, message.Body)
