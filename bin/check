@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# gofmt, asset build, vet and every test under the race detector. The Pebble ACME test
+# runs when a pebble binary is on PATH (or PEBBLE_BIN names one):
+#   go install github.com/letsencrypt/pebble/v2/cmd/pebble@latest
+set -euo pipefail
+cd "$(dirname "$0")/.."
+mkdir -p .cache/tmp .cache/go-build
+export TMPDIR="$PWD/.cache/tmp" GOCACHE="$PWD/.cache/go-build" CGO_ENABLED=1
+if [ -n "$(gofmt -l cmd internal assets)" ]; then gofmt -l cmd internal assets; exit 1; fi
+python3 bin/build-assets
+go vet -tags sqlite_fts5 ./...
+go test -tags sqlite_fts5 -race ./...
