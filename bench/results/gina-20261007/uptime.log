@@ -1,0 +1,12 @@
+23:10:05 reference rep 1 start:  23:10:05 up 1 day, 10:38,  1 user,  load average: 0.60, 0.68, 1.01
+23:15:11 reference rep 1 end:    23:15:11 up 1 day, 10:43,  1 user,  load average: 4.67, 3.18, 1.99
+23:15:11 gina rep 1 start:  23:15:11 up 1 day, 10:43,  1 user,  load average: 4.67, 3.18, 1.99
+23:24:40 gina rep 1 end:    23:24:40 up 1 day, 10:52,  1 user,  load average: 0.62, 1.84, 1.92
+23:24:40 gina rep 2 start:  23:24:40 up 1 day, 10:52,  1 user,  load average: 0.62, 1.84, 1.92
+23:32:39 gina rep 2 end:    23:32:39 up 1 day, 11:00,  1 user,  load average: 1.03, 1.88, 2.03
+23:32:39 reference rep 2 start:  23:32:39 up 1 day, 11:00,  1 user,  load average: 1.03, 1.88, 2.03
+23:37:49 reference rep 2 end:    23:37:49 up 1 day, 11:05,  1 user,  load average: 3.29, 3.10, 2.54
+23:37:49 reference rep 3 start:  23:37:49 up 1 day, 11:05,  1 user,  load average: 3.29, 3.10, 2.54
+23:44:05 reference rep 3 end:    23:44:05 up 1 day, 11:12,  1 user,  load average: 3.29, 3.23, 2.74
+23:44:05 gina rep 3 start:  23:44:05 up 1 day, 11:12,  1 user,  load average: 3.29, 3.23, 2.74
+23:53:04 gina rep 3 end:    23:53:04 up 1 day, 11:21,  1 user,  load average: 0.67, 1.92, 2.39
