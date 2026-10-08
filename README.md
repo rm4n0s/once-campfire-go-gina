@@ -59,10 +59,11 @@ docker run --rm -p 8080:80 -e DISABLE_SSL=1 -e SECRET_KEY_BASE -v campfire-stora
 |---|---|
 | `HTTP_PORT` (80) | Plain HTTP/1.1. With TLS configured it only redirects to HTTPS (301). `H2C_ENABLED=1` also accepts cleartext HTTP/2 (the connection preface decides). |
 | `HTTPS_PORT` (443) | Used when TLS is configured. **HTTP/2 and HTTP/1.1 on one port** (ALPN), WebSocket over either. |
-| `TLS_DOMAIN=a.example,b.example` | Certificates from Let's Encrypt (`ACME_DIRECTORY`, `EAB_KID`/`EAB_HMAC_KEY`), cached in `STORAGE_PATH`. Validation is TLS-ALPN-01 on `HTTPS_PORT`, answered by the server itself. Until the first certificate arrives, handshakes get a throwaway self-signed one. Renewal runs in the background and swaps certificates without a restart. |
+| `TLS_DOMAIN=a.example,b.example` | Certificates from Let's Encrypt (`ACME_DIRECTORY`, `EAB_KID`/`EAB_HMAC_KEY`), cached in `STORAGE_PATH`. Validation is TLS-ALPN-01 on `HTTPS_PORT`, answered by the server itself. Until the first certificate arrives, handshakes get a throwaway self-signed one. Renewal runs as an isolate on a shard of its own and swaps certificates without a restart. |
 | `TLS_CERT_FILE` / `TLS_KEY_FILE` | A static certificate instead (prefer ECDSA or Ed25519: handshakes run on the shard thread). |
 | `TARGET_BIND`:`TARGET_PORT` (127.0.0.1:3000) | The internal application listener, plain HTTP/1.1, no forwarded-header injection — what Thruster proxied to. |
-| `SHARDS` (min(CPUs, 4)) | Shard threads that run HTTP. One more hosts the Action Cable bus. `PIN_SHARDS=1` pins them to cores. |
+| `SHARDS` (min(CPUs, 4)) | Shard threads that run HTTP. One more hosts the Action Cable bus (and Web Push). `PIN_SHARDS=1` pins them to cores. |
+| `JOB_CONCURRENCY` (2) | Job shards: threads that run background jobs (push, webhooks, purge, ban, analyze) and nothing else. Each job runs to completion on its shard, so this is also how many slow jobs can be in flight. With TLS via ACME, one more shard runs certificate renewal. |
 | `GZIP_COMPRESSION_ENABLED`, `GZIP_COMPRESSION_LEVEL` (5), `GZIP_CACHE_SIZE` (32 MiB) | gzip of text responses; compressed bodies are memoised by the SHA-256 of their bytes. |
 | `HTTP_IDLE_TIMEOUT`, `HTTP_READ_TIMEOUT`, `HTTP_WRITE_TIMEOUT`, `MAX_REQUEST_BODY`, `CAMPFIRE_MAX_UPLOAD_BYTES` | Limits (uploads default to 10 GiB, as upstream). |
 | `FORWARD_HEADERS`, `LOG_REQUESTS` | As Thruster. |
@@ -91,9 +92,14 @@ storage, database, access control, Open Graph, webhooks, Web Push) are kept and 
 `bench/run` is the upstream project's benchmark harness (`reference/bench/run`) pointed at this
 image: same Rails-generated seed, same load generator, same suites, same CPU budget. Each app runs
 alone in a container pinned to four hardware threads (`--cpuset-cpus 8-11`, host networking), the load
-generator on four others. Medians of three interleaved runs on 7 October 2026, AMD Ryzen AI MAX+ 395.
-Per-rep JSON and the full report are in
-[`bench/results/gina-20261007`](bench/results/gina-20261007/report.md).
+generator on four others. Medians of three runs, AMD Ryzen AI MAX+ 395. The Rails column is from the
+interleaved Rails/gina run of 7 October 2026 ([`bench/results/gina-20261007`](bench/results/gina-20261007/report.md),
+which also holds the gina figures of that day). The Go column is a gina-only rerun of 8 October 2026
+([`bench/results/gina-jobs-isolates-20261008`](bench/results/gina-jobs-isolates-20261008/report.md)) with
+background jobs and ACME renewal on shards instead of goroutines, on a tree that also carried the
+uncommitted `WriteBody`/recorded-parts work in `internal/front/exchange.go`; it was not benchmarked
+without either change, so the difference from the 7 October gina figures cannot be assigned to one of them.
+Per-rep JSON is in each directory.
 
 ```sh
 parity/bin/reference build                    # in reference/: Rails image
@@ -109,52 +115,59 @@ there), so the columns are comparable, but they are not the same run.
 
 | Measurement | Rails | Go (gina) | Rust (published) |
 |---|---|---|---|
-| Room page, 16 clients (req/s) | 203 | 9,971 | 36,120 |
-| Messages page, 16 clients (req/s) | 396 | 13,082 | 41,352 |
-| Sidebar, 16 clients (req/s) | 517 | 18,311 | 34,339 |
-| Search, 16 clients (req/s) | 355 | 22,853 | 33,510 |
-| `/up`, 16 clients (req/s) | 3,671 | 199,761 | 233,085 |
-| Avatar, 16 clients (req/s) | 93,531 | 41,421 | 389,632 |
-| Static CSS, 16 clients (req/s) | 124,436 | 330,704 | 406,724 |
-| Room page p99, 64 clients (ms) | 484 | 14.7 | 3.1 |
-| Post a message, 16 clients (req/s) | 266 | 594 [53–3,210] | 6,817 |
-| Post a message p99, 64 clients (ms) | 377 | 214 [122–1,478] | 13.9 |
-| Upload a 505 KB JPEG until its thumbnail is served (ms) | 78 | 273 | 27.6 |
-| Cold start until `/up` answers (ms) | 2,845 | 152 | 157 |
-| Idle memory, container (MB) | 300 | 27 | 20 |
-| Peak anon memory under load (MB) | 1,439 | 1,473 | 381 |
+| Room page, 16 clients (req/s) | 203 | 45,529 | 36,120 |
+| Messages page, 16 clients (req/s) | 396 | 43,209 | 41,352 |
+| Sidebar, 16 clients (req/s) | 517 | 22,372 | 34,339 |
+| Search, 16 clients (req/s) | 355 | 39,733 | 33,510 |
+| `/up`, 16 clients (req/s) | 3,671 | 231,058 | 233,085 |
+| Avatar, 16 clients (req/s) | 93,531 | 43,103 | 389,632 |
+| Static CSS, 16 clients (req/s) | 124,436 | 335,288 | 406,724 |
+| Room page p99, 64 clients (ms) | 484 | 4.4 | 3.1 |
+| Post a message, 16 clients (req/s) | 266 | 3,833 [3,499–4,084] | 6,817 |
+| Post a message p99, 64 clients (ms) | 377 | 34 [32–265] | 13.9 |
+| Upload a 505 KB JPEG until its thumbnail is served (ms) | 78 | 258 | 27.6 |
+| Cold start until `/up` answers (ms) | 2,845 | 144 [133–228] | 157 |
+| Idle memory, container (MB) | 300 | 37 | 20 |
+| Peak anon memory under load (MB) | 1,439 | 1,675 | 381 |
 | Connect and subscribe 1,000 cable clients (s) | 1.76 | 0.18 | 0.13 |
-| Post to all 1,000 clients received, paced, p50 (ms) | 83 | 7.8 | 6.5 |
-| Saturated post to all 1,000 clients received, p50 (ms) | 293 | 15,057 | 15.7 |
+| Post to all 1,000 clients received, paced, p50 (ms) | 83 | 8.0 | 6.5 |
+| Saturated post to all 1,000 clients received, p50 (ms) | 293 | 15,032 [433–15,114] | 15.7 |
 
 Bracketed values are the min–max across the three reps. The suite ran with 100, 500 and 1,000 cable
 clients; the 5,000 and 10,000 client scenarios of the upstream headline table were not run.
 
 What the numbers say:
 
-- **Reads and cold paths are the strength.** Pages, search and the sidebar run 33–64× faster than
-  Rails with 20–30× lower p99, and the process starts 19× faster and idles at a tenth of the memory.
-  The Go app is 1.5–3.6× behind the Rust one on dynamic pages.
-- **Posting a message is erratic.** The three reps measured 53, 594 and 3,210 req/s at 16 clients
-  (p99 from 39 ms to 3.2 s), where Rails holds a steady ~265. Sustained, the best rep is well ahead of
-  Rails; the worst is five times slower.
-- **Saturated fan-out is the weak point.** Under a flood of posts the POST itself returns in under a
-  millisecond, but a message reaches every client only after ~15 s, and only about one message per
-  second completes. The realtime bus does not keep up with the posting rate, the backlog accumulates,
-  and peak memory reaches Rails' level (1.4 GB) instead of Rust's 0.4 GB. Paced delivery, one post at a
-  time, is fast: 10–23× lower latency than Rails.
-- **Uploads are 3.5× slower than Rails** (273 ms against 78 ms), the cost of processing images in
+- **Reads and cold paths are the strength.** Pages, search and the sidebar run 43–224× faster than
+  Rails with a 110× lower room-page p99, and the process starts 20× faster and idles at an eighth of
+  the memory. Against the published Rust figures (a different run) room, messages and search are level
+  or ahead and the sidebar is 1.5× behind.
+- **Posting a message is faster than before but not steady.** At 16 clients the three reps measured
+  3,499–4,084 req/s (p99 10 ms), 14× Rails' ~265 and 1.8× behind Rust. At 1 and 64 clients one rep
+  fell to 478 and 470 req/s, so the low outliers of the 7 October run (53 req/s at 16 clients) have
+  not gone away entirely.
+- **Saturated fan-out is still the weak point.** Under a flood of posts the POST itself returns in
+  under a millisecond, but at 1,000 clients a message reaches every client only after ~15 s (median;
+  one rep 0.4 s); at 100 clients the median is 13 s [0.04–15 s]; at 500 clients it was 124 ms. The
+  realtime bus does not keep up with the posting rate when the backlog builds, and peak memory
+  (1.7 GB) ends above Rails' 1.4 GB instead of Rust's 0.4 GB. Paced delivery, one post at a time, is
+  fast: 10× lower latency than Rails at 1,000 clients.
+- **Idle memory rose from 27 to 37 MB.** This run set `JOB_CONCURRENCY=3`, so jobs now have three
+  shards of their own, which most likely accounts for it (each shard reserves its message slots; not
+  measured separately). Cold start is unchanged within the spread.
+- **Uploads are 3.3× slower than Rails** (258 ms against 78 ms), the cost of processing images in
   pure Go instead of libvips.
-- **Avatars are half of Rails' speed** (41k against 94k req/s).
+- **Avatars run at under half of Rails' speed** (43k against 94k req/s).
 
-These are measurements of the current tree, taken before any tuning; the last three items are open
-work, not intended differences.
+These are measurements of the current tree, taken before any tuning; the saturated fan-out, upload
+and avatar items are open work, not intended differences.
 
 ## Differences from upstream — read before replacing an installation
 
-- **Handlers run synchronously on a shard thread.** A slow call (a bcrypt login, generating an image variant, a cold disk read) stalls the other connections on that shard for its duration. Slow background work already goes through the job queue; raise `SHARDS` if logins are bursty.
+- **Handlers run synchronously on a shard thread.** A slow call (a bcrypt login, generating an image variant, a cold disk read) stalls the other connections on that shard for its duration. Slow background work already goes through the job queue, which runs on job shards of its own; raise `SHARDS` if logins are bursty.
 - **TLS is gina's own TLS 1.3 server**: no TLS 1.2, no session resumption, no client certificates, not security-audited (see gina's README). Clients that cannot speak TLS 1.3 cannot connect over HTTPS; put a TLS-terminating proxy in front and use `TARGET_PORT` if you need them.
 - **Request bodies arrive before the handler runs.** Up to 1 MiB stays in memory; larger or unknown-length bodies are spooled to `<storage>/tmp` and parsed from disk, so memory stays flat for big uploads — but an unauthenticated 5 GiB upload is received before it is refused (upstream's multipart parser streamed to disk before auth too).
+- **No goroutines of our own.** Everything the application runs itself is an isolate on a shard: HTTP and WebSocket connections, the Action Cable bus, Web Push, ACME renewal, and background jobs (`internal/jobs`, on `JOB_CONCURRENCY` job shards instead of a goroutine pool). What remains is not ours: gina's thread host and its Web Push worker pool, `net/http` clients for webhooks and unfurling, `database/sql`, and the signal goroutine in the standard library. Consequences against the reference's per-queue worker pools: a job runs to completion on its shard, so the five kinds share `JOB_CONCURRENCY` shards and one slow webhook can hold up a push notification queued behind it on the same shard; the 1024-job cap is per kind and a job that cannot be delivered to a shard is dropped and logged; on shutdown the queues drain (up to 10 s) while the listeners still accept requests, instead of after they stop; and a renewal stuck on a hung ACME server holds up shutdown (gina has no watchdog to interrupt a handler).
 - **No `100 Continue`.** gina's HTTP/1.1 server does not answer `Expect: 100-continue`; `curl` therefore waits one second before sending bodies over 1 MiB. Browsers are unaffected.
 - **No WebSocket compression.** `permessage-deflate` is not negotiated (gina serves clients without it); broadcasts are sent uncompressed from a shared buffer. A client that falls too far behind is closed with 1013 and reconnects.
 - **Media.** Images are processed in pure Go: AVIF, HEIC and SVG are not decoded (no dimensions or variants), variants are not byte-identical to libvips output, and WebP variants are lossless (larger than libvips' lossy WebP). Video/audio still need `ffmpeg`/`ffprobe`.
@@ -171,6 +184,7 @@ assets/             embeds the built Turbo/Stimulus frontend
 internal/httpx      request/response model (+ httpxtest recorder)
 internal/front      gina listeners, TLS, ACME, gzip, request/response glue (+ fronttest: server and WebSocket client for tests)
 internal/cable      Action Cable on gina's WebSocket server
+internal/jobs       background queues: worker isolates on job shards
 internal/push       Web Push on gina's webpush extension (blocking Send for the job queue)
 internal/web        routes, handlers, templates
 internal/database   SQLite access, schema, search          internal/storage   blobs, image/video processing

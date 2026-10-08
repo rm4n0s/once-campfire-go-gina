@@ -11,7 +11,6 @@ package front
 import (
 	"context"
 	ctls "crypto/tls"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -37,6 +36,7 @@ const (
 	typePublic   gina.TypeID = 202
 	typeRedirect gina.TypeID = 204
 	typeHTTPS    gina.TypeID = 210
+	typeACME     gina.TypeID = 206
 )
 
 // Extension is a component that lives in the same gina system as the HTTP servers
@@ -48,15 +48,14 @@ type Extension interface {
 	Install(spec *gina.SystemSpec) error
 	// Attach is called once the system exists, before it runs.
 	Attach(sys *gina.System) error
-	// Close releases what Attach started; called when the server stops.
+	// Close releases what Attach started; called when the server stops, in the
+	// reverse order of Install and while the system still runs.
 	Close()
 }
 
 // Server is a running front server.
 type Server struct {
 	sys      *gina.System
-	cancel   context.CancelFunc
-	done     chan struct{}
 	stopOnce sync.Once
 
 	extensions []Extension
@@ -92,7 +91,7 @@ func start(cfg Config, app httpx.Handler, hub *cable.Hub, publicIP netip.Addr, e
 	}
 	reuse := cfg.Shards > 1
 	spec := gina.SystemSpec{Shards: make([]gina.ShardSpec, cfg.Shards)}
-	srv := &Server{done: make(chan struct{})}
+	srv := &Server{}
 	mailbox := cable.MailboxCapacity
 	cache := newGzipCache(cfg.GzipCacheBytes)
 
@@ -216,6 +215,9 @@ func start(cfg Config, app httpx.Handler, hub *cable.Hub, publicIP netip.Addr, e
 			return nil, err
 		}
 	}
+	if acme != nil {
+		acme.install(&spec) // a shard of its own: issuing a certificate blocks on the network
+	}
 	sys, err := gina.NewSystem(spec, gina.Options{})
 	if err != nil {
 		var details []string
@@ -238,39 +240,30 @@ func start(cfg Config, app httpx.Handler, hub *cable.Hub, publicIP netip.Addr, e
 	}
 	for _, e := range extensions {
 		if err := e.Attach(sys); err != nil {
-			for _, started := range extensions {
-				started.Close()
+			for i := len(extensions) - 1; i >= 0; i-- {
+				extensions[i].Close()
 			}
 			sys.Close()
 			return nil, err
 		}
 	}
 	srv.extensions = extensions
-	ctx, cancel := context.WithCancel(context.Background())
-	srv.cancel = cancel
 	sys.Start(gina.RunOptions{Pin: cfg.Pin, ShutdownGrace: 5 * time.Second})
-	go func() { sys.Wait(); close(srv.done) }()
-	if acme != nil {
-		go acme.run(ctx)
-	}
 	return srv, nil
 }
 
-// Stop shuts the system down gracefully and releases it.
+// Stop shuts the system down gracefully and releases it. Extensions are closed
+// first, last installed first, while the system still runs: a job runner drains its
+// queues on its shards.
 func (s *Server) Stop() {
 	s.stopOnce.Do(func() {
-		s.cancel()
-		for _, e := range s.extensions {
-			e.Close()
+		for i := len(s.extensions) - 1; i >= 0; i-- {
+			s.extensions[i].Close()
 		}
 		s.sys.Stop()
-		<-s.done
 		s.sys.Close()
 	})
 }
-
-// Done is closed once the system has stopped.
-func (s *Server) Done() <-chan struct{} { return s.done }
 
 // Serve starts the front server and runs it until ctx is cancelled.
 func Serve(ctx context.Context, cfg Config, app httpx.Handler, hub *cable.Hub, extensions ...Extension) error {
@@ -283,11 +276,7 @@ func Serve(ctx context.Context, cfg Config, app httpx.Handler, hub *cable.Hub, e
 		scheme = "https"
 	}
 	slog.Info("listening", "public", srv.publicPort(), "scheme", scheme, "target", srv.TargetPort, "shards", cfg.Shards, "domains", cfg.Domains)
-	select {
-	case <-ctx.Done():
-	case <-srv.Done():
-		return errors.New("gina system stopped unexpectedly")
-	}
+	<-ctx.Done()
 	srv.Stop()
 	return nil
 }

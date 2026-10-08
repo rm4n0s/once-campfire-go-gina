@@ -16,6 +16,7 @@ import (
 	ghttp "github.com/rm4n0s/gina/extensions/http"
 
 	"github.com/rm4n0s/once-campfire-go-gina/internal/httpx"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/responsebody"
 )
 
 // handlers turns the application's httpx.Handler into routes of a gina router.
@@ -221,6 +222,7 @@ type exchange struct {
 	status    int
 	wrote     bool
 	body      bytes.Buffer
+	parts     []responsebody.Part // a completed body handed over by WriteBody
 	src       io.Reader
 	srcSize   int64
 	handedOff bool
@@ -243,6 +245,30 @@ func (e *exchange) Write(b []byte) (int, error) {
 		return 0, io.ErrClosedPipe
 	}
 	return e.body.Write(b)
+}
+
+// WriteBody takes a completed body as parts that carry their own digests, so
+// finish keys the compression cache without hashing the bytes again and joins
+// them only when it has to.
+func (e *exchange) WriteBody(parts []responsebody.Part) (int, error) {
+	if !e.wrote {
+		e.WriteHeader(200)
+	}
+	n := 0
+	if e.src != nil || e.body.Len() > 0 || e.parts != nil {
+		for _, part := range parts {
+			k, err := part.WriteTo(e)
+			if n += int(k); err != nil {
+				return n, err
+			}
+		}
+		return n, nil
+	}
+	for _, part := range parts {
+		n += part.Len()
+	}
+	e.parts = parts
+	return n, nil
 }
 
 // Stream sends the body from r without buffering it (httpx.Streamer).
@@ -282,7 +308,33 @@ func gzipWriter(level int) (*gzip.Writer, *sync.Pool) {
 // output depends only on the bytes, so it is memoised by their SHA-256: pages that
 // several clients receive unchanged (and every static asset) are compressed once.
 func (c *gzipCache) compress(body []byte, level int) []byte {
-	key := sha256.Sum256(body)
+	return c.compressKeyed(sha256.Sum256(body), body, level)
+}
+
+// compressParts is compress for a body in parts: the key comes from the parts'
+// digests (in a domain of its own) and the bytes are joined only on a miss.
+func (c *gzipCache) compressParts(parts []responsebody.Part, level int) []byte {
+	digest := responsebody.Digest(parts)
+	key := sha256.Sum256(append([]byte("parts\x00"), digest[:]...))
+	if packed, ok := c.get(key); ok {
+		return packed
+	}
+	return c.compressKeyed(key, joinParts(parts), level)
+}
+
+func joinParts(parts []responsebody.Part) []byte {
+	size := 0
+	for _, part := range parts {
+		size += part.Len()
+	}
+	buf := bytes.NewBuffer(make([]byte, 0, size))
+	for _, part := range parts {
+		part.WriteTo(buf)
+	}
+	return buf.Bytes()
+}
+
+func (c *gzipCache) compressKeyed(key [32]byte, body []byte, level int) []byte {
 	if packed, ok := c.get(key); ok {
 		return packed
 	}
@@ -339,18 +391,31 @@ func (e *exchange) finish(req *httpx.Request, h *handlers) {
 	status := e.status
 	contentType := e.header.Get("Content-Type")
 	body := e.body.Bytes()
+	size := len(body)
+	for _, part := range e.parts {
+		size += part.Len()
+	}
 	allowed := status >= 200 && status != 204 && status != 304
-	if allowed && contentType == "" && (len(body) > 0 || e.src != nil) {
+	if allowed && contentType == "" && (size > 0 || e.src != nil) {
 		contentType = "text/html; charset=utf-8"
 	}
 	encoding := ""
-	if allowed && e.src == nil && cfg.Gzip && len(body) >= 1024 && status != 206 &&
+	if allowed && e.src == nil && cfg.Gzip && size >= 1024 && status != 206 &&
 		e.header.Get("Content-Encoding") == "" && e.header.Get("Content-Range") == "" &&
 		compressible(contentType) && acceptsGzip(req) &&
 		!(cfg.DisableGzipOnAuth && (req.Header.Get("Cookie") != "" || e.header.Get("Set-Cookie") != "")) {
-		if packed := h.cache.compress(body, cfg.CompressionLevel); packed != nil {
+		var packed []byte
+		if e.parts != nil {
+			packed = h.cache.compressParts(e.parts, cfg.CompressionLevel)
+		} else {
+			packed = h.cache.compress(body, cfg.CompressionLevel)
+		}
+		if packed != nil {
 			body, encoding = packed, "gzip"
 		}
+	}
+	if encoding == "" && e.parts != nil {
+		body = joinParts(e.parts)
 	}
 	for name, values := range e.header {
 		if skipHeaders[name] || name == "Content-Type" {

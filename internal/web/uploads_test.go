@@ -62,7 +62,7 @@ func testAppWith(t *testing.T, options fronttest.Options, prepare ...func(*Serve
 	for _, p := range prepare {
 		p(app) // before the system exists
 	}
-	options.Extensions = append(options.Extensions, app.Push)
+	options.Extensions = append(options.Extensions, app.Push, app.Jobs.Extension())
 	server := fronttest.NewServerWith(t, app, app.Cable, options)
 	return app, server, &http.Cookie{Name: "session_token", Value: rails.EscapeCookie(signed)}, user
 }

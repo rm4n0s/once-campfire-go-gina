@@ -12,6 +12,8 @@ submodule; the Rails source is `reference/reference/`). Do not edit `reference/`
 - gina runs handlers synchronously on shard threads and shares one heap: state shared across
   requests (the web `Server`, the cable `Hub`) must be safe for concurrent use. Never block a
   handler on something slow if it can go through `internal/jobs`.
+- No goroutines in non-test code: anything that runs concurrently is an isolate on a shard (background work
+  is a job on `internal/jobs`, which runs on job shards). Blocking work belongs on shards that run no HTTP.
 - Tests live beside code and use real sockets (`internal/front/fronttest`) when the transport
   matters, `httpxtest` recorders when it does not.
 - Run `gofmt`, `go vet -tags sqlite_fts5 ./...` and `go test -race -tags sqlite_fts5 ./...`

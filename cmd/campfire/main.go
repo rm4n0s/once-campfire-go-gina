@@ -75,5 +75,5 @@ func run() error {
 	defer stop()
 	cfg := front.FromEnv()
 	cfg.TempDir = filepath.Join(storage, "tmp")
-	return front.Serve(ctx, cfg, app, app.Cable, app.Push)
+	return front.Serve(ctx, cfg, app, app.Cable, app.Push, app.Jobs.Extension())
 }
