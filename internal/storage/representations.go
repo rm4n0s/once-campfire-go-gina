@@ -1,12 +1,10 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"crypto/md5"
 	"database/sql"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/rm4n0s/once-campfire-go-gina/internal/database"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 )
 
 var mediaSlots = make(chan struct{}, 4)
@@ -43,11 +42,10 @@ func (s *Store) checkedFile(ctx context.Context, b Blob) (string, error) {
 }
 func (s *Store) Analyze(ctx context.Context, b Blob) (Blob, error) {
 	metadata := map[string]any{}
-	decoder := json.NewDecoder(bytes.NewReader(b.Metadata))
-	decoder.UseNumber()
-	decoder.Decode(&metadata)
-	if metadata == nil {
-		metadata = map[string]any{}
+	if value, err := jsonx.Decode(b.Metadata); err == nil {
+		if m, ok := value.(map[string]any); ok {
+			metadata = m
+		}
 	}
 	if strings.HasPrefix(b.Type(), "image") {
 		path, err := s.checkedFile(ctx, b)
@@ -90,7 +88,7 @@ func (s *Store) Analyze(ctx context.Context, b Blob) (Blob, error) {
 		}
 	}
 	metadata["analyzed"] = true
-	raw, err := json.Marshal(metadata)
+	raw, err := jsonx.Marshal(metadata)
 	if err != nil {
 		return b, err
 	}

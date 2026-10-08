@@ -1,14 +1,13 @@
 package web
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
 
 	"github.com/rm4n0s/once-campfire-go-gina/assets"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/storage"
 )
 
@@ -23,17 +22,16 @@ func rubyFloat(n float64) string {
 	return s
 }
 func attachmentDimensions(b storage.Blob) (width, height, half, ratio string) {
-	var metadata map[string]any
-	d := json.NewDecoder(bytes.NewReader(b.Metadata))
-	d.UseNumber()
-	if d.Decode(&metadata) != nil {
+	value, err := jsonx.Decode(b.Metadata)
+	if err != nil {
 		return
 	}
-	w, ok := metadata["width"].(json.Number)
+	metadata, _ := value.(map[string]any)
+	w, ok := metadata["width"].(jsonx.Number)
 	if !ok {
 		return
 	}
-	h, ok := metadata["height"].(json.Number)
+	h, ok := metadata["height"].(jsonx.Number)
 	if !ok {
 		return
 	}

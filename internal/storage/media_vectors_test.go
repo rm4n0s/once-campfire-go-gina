@@ -5,7 +5,8 @@ package storage
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,7 +22,7 @@ func TestMediaOutputBytes(t *testing.T) {
 	type output struct {
 		File            string
 		Blob            Blob
-		Transformations json.RawMessage `json:"transformations_typed"`
+		Transformations jsontext.Value `json:"transformations_typed"`
 	}
 	type fixture struct {
 		Fixture  string
@@ -37,7 +38,7 @@ func TestMediaOutputBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = json.Unmarshal(raw, &data); err != nil {
+	if err = json.Unmarshal(raw, &data, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	if got := vipsVersion(); got != data.Versions["libvips"] {

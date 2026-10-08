@@ -1,7 +1,7 @@
 package web
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"reflect"
 	"testing"
@@ -24,7 +24,7 @@ func TestReferenceRoutes(t *testing.T) {
 			Error      any
 		}
 	}
-	if err = json.Unmarshal(raw, &vector); err != nil {
+	if err = json.Unmarshal(raw, &vector, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	if len(vector.Routes) != len(contracts) {

@@ -3,7 +3,6 @@ package integrations
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -14,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/richtext"
 	xhtml "golang.org/x/net/html"
 )
@@ -229,7 +229,7 @@ func (u *Unfurler) Unfurl(ctx context.Context, location string) ([]byte, error) 
 	var result bytes.Buffer
 	result.WriteByte('{')
 	for _, key := range keys {
-		encoded, _ := json.Marshal(values[key])
+		encoded, _ := jsonx.Marshal(values[key])
 		result.WriteString(`"` + key + `":`)
 		result.Write(encoded)
 		result.WriteByte(',')

@@ -7,9 +7,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"hash"
 	"io"
 	"regexp"
@@ -47,30 +49,29 @@ func (v Verifier) mac(data string) string {
 
 // CanonicalJSON preserves object insertion order and integer precision, unlike a map[string]any.
 func CanonicalJSON(raw []byte, escapeHTML bool) ([]byte, error) {
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
+	decoder := jsontext.NewDecoder(bytes.NewReader(raw), jsontext.AllowDuplicateNames(true))
 	var out bytes.Buffer
 	var read func() error
 	read = func() error {
-		token, err := decoder.Token()
+		token, err := decoder.ReadToken()
 		if err != nil {
 			return err
 		}
-		switch value := token.(type) {
-		case json.Delim:
-			out.WriteByte(byte(value))
+		switch kind := token.Kind(); kind {
+		case '{', '[':
+			out.WriteByte(byte(kind))
 			first := true
-			for decoder.More() {
+			for decoder.PeekKind() != kind+2 {
 				if !first {
 					out.WriteByte(',')
 				}
 				first = false
-				if value == '{' {
-					key, err := decoder.Token()
+				if kind == '{' {
+					key, err := decoder.ReadToken()
 					if err != nil {
 						return err
 					}
-					quoted, err := jsonString(key.(string), escapeHTML)
+					quoted, err := jsonString(key.String(), escapeHTML)
 					if err != nil {
 						return err
 					}
@@ -81,23 +82,23 @@ func CanonicalJSON(raw []byte, escapeHTML bool) ([]byte, error) {
 					return err
 				}
 			}
-			close, err := decoder.Token()
+			close, err := decoder.ReadToken()
 			if err != nil {
 				return err
 			}
-			out.WriteByte(byte(close.(json.Delim)))
-		case string:
-			b, err := jsonString(value, escapeHTML)
+			out.WriteByte(byte(close.Kind()))
+		case '"':
+			b, err := jsonString(token.String(), escapeHTML)
 			if err != nil {
 				return err
 			}
 			out.Write(b)
-		case json.Number:
-			out.WriteString(value.String())
-		case nil:
+		case '0':
+			out.WriteString(token.String())
+		case 'n':
 			out.WriteString("null")
-		case bool:
-			out.WriteString(strconv.FormatBool(value))
+		case 't', 'f':
+			out.WriteString(strconv.FormatBool(token.Bool()))
 		default:
 			return ErrInvalid
 		}
@@ -106,41 +107,18 @@ func CanonicalJSON(raw []byte, escapeHTML bool) ([]byte, error) {
 	if err := read(); err != nil {
 		return nil, err
 	}
-	if _, err := decoder.Token(); err != io.EOF {
+	if _, err := decoder.ReadToken(); err != io.EOF {
 		return nil, ErrInvalid
 	}
 	return out.Bytes(), nil
 }
+
+// jsonString quotes value, leaving U+2028 and U+2029 literal as Rails does.
 func jsonString(value string, escapeHTML bool) ([]byte, error) {
-	var out bytes.Buffer
-	encoder := json.NewEncoder(&out)
-	encoder.SetEscapeHTML(escapeHTML)
-	if err := encoder.Encode(value); err != nil {
-		return nil, err
-	}
-	raw := bytes.TrimSuffix(out.Bytes(), []byte{'\n'})
-	result := make([]byte, 0, len(raw))
-	for i := 0; i < len(raw); i++ {
-		if raw[i] == '\\' && i+1 < len(raw) {
-			if i+5 < len(raw) && (string(raw[i:i+6]) == `\u2028` || string(raw[i:i+6]) == `\u2029`) {
-				if raw[i+5] == '8' {
-					result = append(result, []byte("\u2028")...)
-				} else {
-					result = append(result, []byte("\u2029")...)
-				}
-				i += 5
-			} else {
-				result = append(result, raw[i], raw[i+1])
-				i++
-			}
-		} else {
-			result = append(result, raw[i])
-		}
-	}
-	return result, nil
+	return jsonx.Marshal(value, jsontext.EscapeForHTML(escapeHTML), jsontext.EscapeForJS(false))
 }
 func (v Verifier) Generate(value any, purpose string, expires time.Time) (string, error) {
-	raw, err := json.Marshal(value)
+	raw, err := jsonx.Marshal(value)
 	if err != nil {
 		return "", err
 	}
@@ -175,7 +153,7 @@ func (v Verifier) GenerateRaw(raw []byte, purpose string, expires time.Time) (st
 	payload := encoding.EncodeToString(data)
 	return payload + "--" + v.mac(payload), nil
 }
-func (v Verifier) VerifyRaw(message, purpose string, now time.Time) (json.RawMessage, error) {
+func (v Verifier) VerifyRaw(message, purpose string, now time.Time) (jsontext.Value, error) {
 	length := 40
 	if v.SHA256 {
 		length = 64
@@ -200,7 +178,7 @@ func (v Verifier) Verify(message, purpose string, now time.Time, dest any) error
 	}
 	return nil
 }
-func (v Verifier) decode(data []byte, purpose string, now time.Time) (json.RawMessage, error) {
+func (v Verifier) decode(data []byte, purpose string, now time.Time) (jsontext.Value, error) {
 	if len(data) > 1 && data[0] == 4 && data[1] == 8 {
 		if !v.AllowMarshal {
 			return nil, ErrInvalid
@@ -215,13 +193,13 @@ func (v Verifier) decode(data []byte, purpose string, now time.Time) (json.RawMe
 			return nil, err
 		}
 	}
-	var envelope map[string]json.RawMessage
+	var envelope map[string]jsontext.Value
 	if json.Unmarshal(data, &envelope) == nil && envelope["_rails"] != nil {
 		var meta struct {
-			Data    json.RawMessage `json:"data"`
-			Message *string         `json:"message"`
-			Exp     *string         `json:"exp"`
-			Pur     any             `json:"pur"`
+			Data    jsontext.Value `json:"data"`
+			Message *string        `json:"message"`
+			Exp     *string        `json:"exp"`
+			Pur     any            `json:"pur"`
 		}
 		if json.Unmarshal(envelope["_rails"], &meta) != nil {
 			return nil, ErrInvalid
@@ -250,7 +228,7 @@ func (v Verifier) decode(data []byte, purpose string, now time.Time) (json.RawMe
 			return v.decode(decoded, "", now)
 		}
 		if meta.Data == nil {
-			return json.RawMessage("null"), nil
+			return jsontext.Value("null"), nil
 		}
 		return CanonicalJSON(meta.Data, v.HTML)
 	}

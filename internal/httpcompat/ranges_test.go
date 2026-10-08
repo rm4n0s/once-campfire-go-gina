@@ -1,7 +1,7 @@
 package httpcompat
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"reflect"
 	"strings"
@@ -18,7 +18,7 @@ func TestRackRangeVectors(t *testing.T) {
 		Size   int64
 		Ranges [][2]int64
 	}
-	if err = json.Unmarshal(data, &cases); err != nil {
+	if err = json.Unmarshal(data, &cases, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	if len(cases) != 39 {

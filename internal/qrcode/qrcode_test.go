@@ -2,7 +2,7 @@ package qrcode
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"strings"
 	"testing"
@@ -19,7 +19,7 @@ func TestReferenceQRCodes(t *testing.T) {
 		Modules string
 		SVG     *string
 	}
-	if err = json.Unmarshal(raw, &cases); err != nil {
+	if err = json.Unmarshal(raw, &cases, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	for i, c := range cases {

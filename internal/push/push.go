@@ -22,7 +22,6 @@ import (
 	"net"
 	"net/url"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -34,6 +33,14 @@ import (
 
 // typeResults is the isolate type of the results receiver (webpush itself uses 220).
 const typeResults gina.TypeID = 2
+
+// waiters is how many Sends can be waiting for an answer at once. A notification's ID
+// is a counter shifted left by slotBits, with the index of its waiter's slot in the low
+// bits.
+const (
+	slotBits = 16
+	waiters  = 1024
+)
 
 // ttl and urgency are what the reference sends: keep a message for 28 days, and wake
 // a sleeping device for it.
@@ -54,9 +61,12 @@ type Service struct {
 	sys     atomic.Pointer[gina.System]
 	results gina.Handle
 
-	next    atomic.Uint64
-	mu      sync.Mutex
-	pending map[uint64]chan webpush.Result
+	// Each waiter owns a slot: a channel for its answer, made once and never replaced,
+	// so the results isolate reads the slice without a lock. free holds the slots
+	// nobody is using.
+	next  atomic.Uint64
+	slots []chan webpush.Result
+	free  chan uint32
 }
 
 // Disabled returns a service that is not configured.
@@ -86,7 +96,12 @@ func New(subject, public, private string) (*Service, error) {
 	}
 	s := Disabled()
 	s.vapid, s.subject = vapid, subject
-	s.pending = map[uint64]chan webpush.Result{}
+	s.slots = make([]chan webpush.Result, waiters)
+	s.free = make(chan uint32, waiters)
+	for i := range s.slots {
+		s.slots[i] = make(chan webpush.Result, 1)
+		s.free <- uint32(i)
+	}
 	return s, nil
 }
 
@@ -135,35 +150,34 @@ func (s *Service) Install(spec *gina.SystemSpec) error {
 	return nil
 }
 
-// Attach starts the workers that talk to the push services.
+// Attach keeps the running system, which Send needs to reach the sender. Everything
+// that talks to the push services is an isolate that Install put on the shard, so
+// there is nothing to start.
 func (s *Service) Attach(sys *gina.System) error {
 	if !s.Enabled() || s.wp == nil {
 		return nil
-	}
-	if err := s.wp.Start(sys); err != nil {
-		return err
 	}
 	s.sys.Store(sys)
 	return nil
 }
 
-// Close stops the workers.
-func (s *Service) Close() {
-	if s.wp != nil {
-		s.wp.Close()
-	}
-}
+// Close has nothing to stop: the sender's isolates end with the system.
+func (s *Service) Close() {}
 
 func (s *Service) resultsHandler(_ *struct{}, _ *gina.Ctx, m *gina.Message) gina.Effect {
 	switch m.Tag {
 	case webpush.TagResult:
 		r := *gina.PayloadAs[webpush.Result](m)
-		s.mu.Lock()
-		ch := s.pending[r.ID]
-		delete(s.pending, r.ID)
-		s.mu.Unlock()
-		if ch != nil {
-			ch <- r // buffered, one result per id
+		if slot := int(r.ID & (1<<slotBits - 1)); slot < len(s.slots) {
+			ch := s.slots[slot]
+			select {
+			case ch <- r:
+			default:
+				// The slot still holds the answer to a Send that gave up. This isolate
+				// is the only writer, so there is room once it is gone.
+				<-ch
+				ch <- r
+			}
 		}
 	case gina.TagShutdown:
 		return gina.Done()
@@ -216,37 +230,46 @@ func (s *Service) Send(ctx context.Context, endpoint, key, auth string, message 
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
-	id := s.next.Add(1)
-	ch := make(chan webpush.Result, 1)
-	s.mu.Lock()
-	s.pending[id] = ch
-	s.mu.Unlock()
-	forget := func() { s.mu.Lock(); delete(s.pending, id); s.mu.Unlock() }
+	var slot uint32
+	select {
+	case slot = <-s.free:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { s.free <- slot }()
+	ch := s.slots[slot]
+	id := s.next.Add(1)<<slotBits | uint64(slot)
 
 	n := &webpush.Notification{ID: id, Sub: sub, Payload: message, TTL: ttl, Urgency: webpush.UrgencyHigh, ReplyTo: s.results}
 	if err := n.Validate(); err != nil {
-		forget()
 		return err
 	}
 	if r := s.wp.SendExternal(sys, n); r != gina.SendOK {
-		forget()
 		return fmt.Errorf("push queue refused the notification: %v", r)
 	}
-	select {
-	case r := <-ch:
-		switch r.Outcome {
-		case webpush.OutcomeDelivered:
-			return nil
-		case webpush.OutcomeGone:
-			return integrations.ErrPushGone
-		case webpush.OutcomeInvalid:
-			return errors.New("push notification could not be built")
-		default:
-			return fmt.Errorf("push service returned %d (%s after %d attempts)", r.Status, r.Outcome, r.Attempts)
+	for {
+		select {
+		case r := <-ch:
+			if r.ID != id {
+				continue // the answer to an earlier Send that gave up on this slot
+			}
+			return outcome(r)
+		case <-ctx.Done():
+			return ctx.Err()
 		}
-	case <-ctx.Done():
-		forget()
-		return ctx.Err()
+	}
+}
+
+func outcome(r webpush.Result) error {
+	switch r.Outcome {
+	case webpush.OutcomeDelivered:
+		return nil
+	case webpush.OutcomeGone:
+		return integrations.ErrPushGone
+	case webpush.OutcomeInvalid:
+		return errors.New("push notification could not be built")
+	default:
+		return fmt.Errorf("push service returned %d (%s after %d attempts)", r.Status, r.Outcome, r.Attempts)
 	}
 }
 

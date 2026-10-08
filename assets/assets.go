@@ -4,7 +4,7 @@ package assets
 import (
 	"bytes"
 	"embed"
-	"encoding/json"
+	"encoding/json/v2"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/httpx"
 	"html/template"
 	"io/fs"

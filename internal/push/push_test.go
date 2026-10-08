@@ -10,7 +10,8 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -71,14 +72,14 @@ func TestGinaEncryptionInteroperatesWithReference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var fields map[string]json.RawMessage
-	if err = json.Unmarshal(raw, &fields); err != nil {
+	var fields map[string]jsontext.Value
+	if err = json.Unmarshal(raw, &fields, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	v := map[string]string{}
 	for k, f := range fields {
 		var text string
-		if json.Unmarshal(f, &text) == nil {
+		if json.Unmarshal(f, &text, json.MatchCaseInsensitiveNames(true)) == nil {
 			v[k] = text
 		}
 	}
@@ -265,10 +266,8 @@ func TestSendCancelsWithItsContext(t *testing.T) {
 	if err := h.svc.Send(ctx, service.URL+"/x", h.key, h.sec, []byte("x")); !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 3*time.Second {
 		t.Fatalf("err=%v after %v", err, time.Since(start))
 	}
-	h.svc.mu.Lock()
-	defer h.svc.mu.Unlock()
-	if len(h.svc.pending) != 0 {
-		t.Fatal("abandoned send left its waiter registered")
+	if len(h.svc.free) != waiters {
+		t.Fatal("abandoned send kept its waiter slot")
 	}
 }
 

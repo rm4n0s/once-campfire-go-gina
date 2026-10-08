@@ -1,15 +1,16 @@
 package web
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/httpx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/uuid"
 	"log/slog"
+	"maps"
 	"os"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/rm4n0s/once-campfire-go-gina/internal/database"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/integrations"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/jobs"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/push"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/rails"
 )
@@ -64,14 +66,19 @@ func (s *Server) initJobs() {
 func subscriptionParams(r *httpx.Request) (map[string]*string, error) {
 	attrs := map[string]*string{}
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		var raw map[string]json.RawMessage
-		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		var raw map[string]jsontext.Value
+		if err := json.UnmarshalRead(r.Body, &raw); err != nil {
 			return nil, err
 		}
 		if nested, ok := raw["push_subscription"]; ok {
-			if err := json.Unmarshal(nested, &raw); err != nil {
+			var inner map[string]jsontext.Value
+			if err := json.Unmarshal(nested, &inner); err != nil {
 				return nil, err
 			}
+			if inner == nil {
+				raw = nil
+			}
+			maps.Copy(raw, inner)
 		}
 		if len(raw) == 0 {
 			return nil, errors.New("push_subscription is required")
@@ -162,10 +169,7 @@ func (s *Server) deletePushSubscription(w httpx.ResponseWriter, r *httpx.Request
 }
 
 func notificationJSON(title, body, path string, badge int64) []byte {
-	var b bytes.Buffer
-	e := json.NewEncoder(&b)
-	e.SetEscapeHTML(false)
-	e.Encode(struct {
+	raw, _ := jsonx.Marshal(struct {
 		Title   string `json:"title"`
 		Options struct {
 			Body string `json:"body"`
@@ -186,7 +190,7 @@ func notificationJSON(title, body, path string, badge int64) []byte {
 		Path  string `json:"path"`
 		Badge int64  `json:"badge"`
 	}{path, badge}}})
-	encoded, _ := rails.CanonicalJSON(bytes.TrimSpace(b.Bytes()), false)
+	encoded, _ := rails.CanonicalJSON(raw, false)
 	return encoded
 }
 

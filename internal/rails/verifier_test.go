@@ -1,7 +1,8 @@
 package rails
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"os"
 	"strconv"
 	"testing"
@@ -21,7 +22,7 @@ func TestRemainingRailsVectors(t *testing.T) {
 				ID                        int64
 				Signed                    string `json:"signed_id"`
 				Expires                   string `json:"expires_at"`
-				Expected                  json.RawMessage
+				Expected                  jsontext.Value
 			}
 		} `json:"signed_ids"`
 		SGIDs struct {
@@ -33,7 +34,7 @@ func TestRemainingRailsVectors(t *testing.T) {
 		} `json:"sgids"`
 		Unverified []struct {
 			Case, SGID string
-			Expected   json.RawMessage
+			Expected   jsontext.Value
 		} `json:"unverified_sgids"`
 		Apps struct {
 			Generate, Verify []struct {
@@ -44,7 +45,7 @@ func TestRemainingRailsVectors(t *testing.T) {
 			}
 		} `json:"app_verifiers"`
 	}
-	if err = json.Unmarshal(data, &fixture); err != nil {
+	if err = json.Unmarshal(data, &fixture, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	s, err := NewSecrets(fixture.Secret)
@@ -66,9 +67,9 @@ func TestRemainingRailsVectors(t *testing.T) {
 				return
 			}
 			var want int64
-			if json.Unmarshal(c.Expected, &want) != nil {
+			if json.Unmarshal(c.Expected, &want, json.MatchCaseInsensitiveNames(true)) != nil {
 				var text string
-				if json.Unmarshal(c.Expected, &text) != nil {
+				if json.Unmarshal(c.Expected, &text, json.MatchCaseInsensitiveNames(true)) != nil {
 					t.Fatal("invalid expected ID")
 				}
 				var err error
@@ -114,7 +115,7 @@ func TestRemainingRailsVectors(t *testing.T) {
 				got = ""
 			}
 			var want *string
-			if json.Unmarshal(c.Expected, &want) != nil {
+			if json.Unmarshal(c.Expected, &want, json.MatchCaseInsensitiveNames(true)) != nil {
 				t.Fatal("bad vector")
 			}
 			if want == nil {

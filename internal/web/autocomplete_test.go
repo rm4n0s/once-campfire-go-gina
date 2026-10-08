@@ -2,7 +2,7 @@ package web
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/url"
 	"strings"
@@ -21,7 +21,7 @@ func TestMentionAutocompleteAndRendering(t *testing.T) {
 		t.Fatalf("%d %s", response.StatusCode, raw)
 	}
 	var users []struct{ SGID string }
-	if err = json.Unmarshal(raw, &users); err != nil || len(users) != 1 {
+	if err = json.Unmarshal(raw, &users, json.MatchCaseInsensitiveNames(true)); err != nil || len(users) != 1 {
 		t.Fatal(string(raw))
 	}
 	rooms, err := app.DB.Rooms(ctx, owner.ID)
@@ -67,7 +67,7 @@ func TestManifestAndServiceWorker(t *testing.T) {
 		Name  string
 		Icons []struct{ Src string }
 	}
-	if err := json.Unmarshal(raw, &manifest); err != nil {
+	if err := json.Unmarshal(raw, &manifest, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err, string(raw))
 	}
 	if response.StatusCode != 200 || manifest.Name != name || len(manifest.Icons) != 3 || strings.Contains(manifest.Icons[0].Src, "&amp;") {

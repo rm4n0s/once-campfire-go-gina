@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"io"
 	"slices"
+	"strconv"
 	"time"
 )
 
@@ -69,8 +71,8 @@ func (v Variation) MarshalJSON() ([]byte, error) {
 		if i > 0 {
 			out.WriteByte(',')
 		}
-		key, _ := json.Marshal(e.Key)
-		value, err := json.Marshal(e.Value)
+		key, _ := jsonx.Marshal(e.Key)
+		value, err := jsonx.Marshal(e.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -93,8 +95,7 @@ func (s *Store) DecodeVariation(key string) (Variation, error) {
 	if err != nil {
 		return nil, err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
+	decoder := jsontext.NewDecoder(bytes.NewReader(raw), jsontext.AllowDuplicateNames(true))
 	value, err := readVariationValue(decoder)
 	if err != nil {
 		return nil, err
@@ -103,51 +104,52 @@ func (s *Store) DecodeVariation(key string) (Variation, error) {
 	if !ok {
 		return nil, errors.New("transformations must be a hash")
 	}
-	if _, err = decoder.Token(); err != io.EOF {
+	if _, err = decoder.ReadToken(); err != io.EOF {
 		return nil, errors.New("trailing transformation data")
 	}
 	return v, nil
 }
-func readVariationValue(decoder *json.Decoder) (any, error) {
-	token, err := decoder.Token()
+func readVariationValue(decoder *jsontext.Decoder) (any, error) {
+	token, err := decoder.ReadToken()
 	if err != nil {
 		return nil, err
 	}
-	switch x := token.(type) {
-	case json.Delim:
-		if x == '{' {
-			var entries Variation
-			for decoder.More() {
-				key, err := decoder.Token()
-				if err != nil {
-					return nil, err
-				}
-				value, err := readVariationValue(decoder)
-				if err != nil {
-					return nil, err
-				}
-				entries = append(entries, Entry{key.(string), value})
+	switch token.Kind() {
+	case '{':
+		var entries Variation
+		for decoder.PeekKind() != '}' {
+			key, err := decoder.ReadToken()
+			if err != nil {
+				return nil, err
 			}
-			_, err := decoder.Token()
-			return entries, err
-		}
-		if x == '[' {
-			values := []any{}
-			for decoder.More() {
-				value, err := readVariationValue(decoder)
-				if err != nil {
-					return nil, err
-				}
-				values = append(values, value)
+			name := key.String()
+			value, err := readVariationValue(decoder)
+			if err != nil {
+				return nil, err
 			}
-			_, err := decoder.Token()
-			return values, err
+			entries = append(entries, Entry{name, value})
 		}
-		return nil, errors.New("invalid delimiter")
-	case json.Number:
-		return x.Int64()
+		_, err := decoder.ReadToken()
+		return entries, err
+	case '[':
+		values := []any{}
+		for decoder.PeekKind() != ']' {
+			value, err := readVariationValue(decoder)
+			if err != nil {
+				return nil, err
+			}
+			values = append(values, value)
+		}
+		_, err := decoder.ReadToken()
+		return values, err
+	case '0':
+		return strconv.ParseInt(token.String(), 10, 64)
+	case '"':
+		return token.String(), nil
+	case 't', 'f':
+		return token.Bool(), nil
 	default:
-		return token, nil
+		return nil, nil
 	}
 }
 func (v Variation) MarshalRuby() []byte {

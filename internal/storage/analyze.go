@@ -1,11 +1,10 @@
 package storage
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -26,12 +25,11 @@ func probe(ctx context.Context, path string) (map[string]any, error) {
 	if err != nil && len(raw) == 0 {
 		return nil, fmt.Errorf("ffprobe: %w", err)
 	}
-	var result map[string]any
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if err = decoder.Decode(&result); err != nil {
+	value, err := jsonx.Decode(raw)
+	if err != nil {
 		return nil, fmt.Errorf("ffprobe output: %w", err)
 	}
+	result, _ := value.(map[string]any)
 	return result, nil
 }
 func object(value any) map[string]any { m, _ := value.(map[string]any); return m }
@@ -47,7 +45,7 @@ func streamOf(data map[string]any, kind string) map[string]any {
 }
 func number(value any) (float64, error) {
 	switch v := value.(type) {
-	case json.Number:
+	case jsonx.Number:
 		return v.Float64()
 	case float64:
 		return v, nil
@@ -57,12 +55,12 @@ func number(value any) (float64, error) {
 		return 0, fmt.Errorf("invalid numeric metadata %v", value)
 	}
 }
-func floatNumber(n float64) json.Number {
+func floatNumber(n float64) jsonx.Number {
 	s := strconv.FormatFloat(n, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {
 		s += ".0"
 	}
-	return json.Number(s)
+	return jsonx.Number(s)
 }
 func mediaMetadata(data map[string]any, video bool) (map[string]any, error) {
 	out := map[string]any{}

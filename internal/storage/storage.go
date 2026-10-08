@@ -8,7 +8,8 @@ import (
 	"database/sql"
 	_ "embed"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -28,15 +29,15 @@ type Store struct {
 	Root     string
 }
 type Blob struct {
-	ID          int64           `json:"id"`
-	Key         string          `json:"key"`
-	Filename    string          `json:"filename"`
-	ContentType *string         `json:"content_type"`
-	Metadata    json.RawMessage `json:"metadata"`
-	ServiceName string          `json:"service_name"`
-	ByteSize    int64           `json:"byte_size"`
-	Checksum    string          `json:"checksum"`
-	CreatedAt   string          `json:"created_at"`
+	ID          int64          `json:"id"`
+	Key         string         `json:"key"`
+	Filename    string         `json:"filename"`
+	ContentType *string        `json:"content_type"`
+	Metadata    jsontext.Value `json:"metadata"`
+	ServiceName string         `json:"service_name"`
+	ByteSize    int64          `json:"byte_size"`
+	Checksum    string         `json:"checksum"`
+	CreatedAt   string         `json:"created_at"`
 }
 type DiskKey struct {
 	Key         string  `json:"key"`
@@ -105,9 +106,9 @@ func scanBlob(row *sql.Row) (Blob, error) {
 		&checksum,
 		&b.CreatedAt,
 	)
-	b.Metadata = json.RawMessage(metadata.String)
-	if !json.Valid(b.Metadata) {
-		b.Metadata = json.RawMessage("{}")
+	b.Metadata = jsontext.Value(metadata.String)
+	if !b.Metadata.IsValid() {
+		b.Metadata = jsontext.Value("{}")
 	}
 	b.Checksum = checksum.String
 	return b, err
@@ -145,7 +146,7 @@ func (s *Store) Create(ctx context.Context, b Blob) (Blob, error) {
 		b.ServiceName = "local"
 	}
 	if len(b.Metadata) == 0 {
-		b.Metadata = json.RawMessage("{}")
+		b.Metadata = jsontext.Value("{}")
 	}
 	b.CreatedAt = database.Stamp(s.DB.Now())
 	result, err := s.DB.Write.ExecContext(
@@ -267,7 +268,7 @@ func (s *Store) StageFile(
 		Filename:    filename,
 		ContentType: &contentType,
 		ServiceName: "local",
-		Metadata:    json.RawMessage(`{"identified":true}`),
+		Metadata:    jsontext.Value(`{"identified":true}`),
 		ByteSize:    size,
 		Checksum:    base64.StdEncoding.EncodeToString(hash.Sum(nil)),
 	}

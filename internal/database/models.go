@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/uuid"
 	"strings"

@@ -3,7 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/v2"
 	"slices"
 	"time"
 )

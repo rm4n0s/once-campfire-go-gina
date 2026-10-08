@@ -1,7 +1,7 @@
 package rails
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"strings"
@@ -26,7 +26,7 @@ func TestStreamVectors(t *testing.T) {
 			}
 		} `json:"turbo_stream_names"`
 	}
-	if err = json.Unmarshal(data, &v); err != nil {
+	if err = json.Unmarshal(data, &v, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	s, err := NewSecrets(v.Secret)

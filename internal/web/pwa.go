@@ -3,23 +3,21 @@ package web
 import (
 	"bytes"
 	"embed"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/httpx"
 	"text/template"
 
 	"github.com/rm4n0s/once-campfire-go-gina/assets"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 )
 
 //go:embed pwa/*
 var pwaFiles embed.FS
 var manifestTemplate = template.Must(template.New("manifest.json").Funcs(template.FuncMap{
 	"json": func(s string) string {
-		var b bytes.Buffer
-		encoder := json.NewEncoder(&b)
-		encoder.SetEscapeHTML(false)
-		encoder.Encode(s)
-		return string(bytes.TrimSuffix(b.Bytes(), []byte{'\n'}))
+		raw, _ := jsonx.Marshal(s, jsontext.EscapeForHTML(false))
+		return string(raw)
 	},
 	"image": func(origin, path string) string { return origin + assets.Path(path) },
 }).ParseFS(pwaFiles, "pwa/manifest.json"))

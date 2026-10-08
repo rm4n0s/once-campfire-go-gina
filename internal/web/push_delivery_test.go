@@ -10,7 +10,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -122,7 +122,7 @@ func TestMessagePushesThroughGinaAndDropsGoneSubscriptions(t *testing.T) {
 			Options struct{ Body string }
 		}
 		plain := decryptPush(t, receiver, secret, d.body)
-		if err := json.Unmarshal(plain, &payload); err != nil || payload.Title != "All Talk" || !strings.Contains(string(plain), "hello from the owner") {
+		if err := json.Unmarshal(plain, &payload, json.MatchCaseInsensitiveNames(true)); err != nil || payload.Title != "All Talk" || !strings.Contains(string(plain), "hello from the owner") {
 			t.Fatalf("payload %s (%v)", plain, err)
 		}
 	case <-time.After(10 * time.Second):

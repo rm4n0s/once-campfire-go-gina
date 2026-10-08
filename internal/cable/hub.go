@@ -17,7 +17,8 @@ package cable
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ import (
 
 	"github.com/rm4n0s/once-campfire-go-gina/internal/database"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/httpx"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/rails"
 )
 
@@ -229,7 +231,7 @@ func (h *Hub) fanOut(g *gina.Ctx, data []byte) {
 		}
 		frame, exists := frames[r.identifier]
 		if !exists {
-			identifier, _ := json.Marshal(r.identifier)
+			identifier, _ := jsonx.Marshal(r.identifier)
 			raw := make([]byte, 0, len(identifier)+len(message)+32)
 			raw = append(raw, `{"identifier":`...)
 			raw = append(raw, identifier...)
@@ -328,7 +330,7 @@ func (h *Hub) publish(key publication, message any) {
 	if !listening {
 		return
 	}
-	raw, err := json.Marshal(message)
+	raw, err := jsonx.Marshal(message)
 	if err != nil {
 		return
 	}
@@ -460,7 +462,7 @@ func (h *Hub) onClose(conn *ws.Conn, code uint16, reason []byte) {
 }
 
 func reply(conn *ws.Conn, kind, identifier string) {
-	data, _ := json.Marshal(map[string]string{"type": kind, "identifier": identifier})
+	data, _ := jsonx.Marshal(map[string]string{"type": kind, "identifier": identifier})
 	conn.SendText(string(data))
 }
 
@@ -475,7 +477,11 @@ func (h *Hub) onMessage(conn *ws.Conn, op ws.Opcode, data []byte) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	var command struct{ Command, Identifier, Data string }
+	var command struct {
+		Command    string `json:"command"`
+		Identifier string `json:"identifier"`
+		Data       string `json:"data"`
+	}
 	if json.Unmarshal(data, &command) != nil || len(command.Identifier) > 4096 {
 		return
 	}
@@ -526,7 +532,9 @@ func (h *Hub) onMessage(conn *ws.Conn, op ws.Opcode, data []byte) {
 		if !exists {
 			return
 		}
-		var payload struct{ Action string }
+		var payload struct {
+			Action string `json:"action"`
+		}
 		if json.Unmarshal([]byte(command.Data), &payload) != nil {
 			return
 		}
@@ -570,9 +578,9 @@ func (h *Hub) onMessage(conn *ws.Conn, op ws.Opcode, data []byte) {
 
 func (h *Hub) subscription(ctx context.Context, c *client, identifier string) (subscription, bool) {
 	var params struct {
-		Channel string
-		Signed  string          `json:"signed_stream_name"`
-		Room    json.RawMessage `json:"room_id"`
+		Channel string         `json:"channel"`
+		Signed  string         `json:"signed_stream_name"`
+		Room    jsontext.Value `json:"room_id"`
 	}
 	if json.Unmarshal([]byte(identifier), &params) != nil {
 		return subscription{}, false

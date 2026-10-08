@@ -2,7 +2,7 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/once-campfire-go-gina/internal/database"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/rails"
 )
 
@@ -34,7 +35,7 @@ func TestMediaMetadataAndTrackedPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = json.Unmarshal(raw, &vectors); err != nil {
+	if err = json.Unmarshal(raw, &vectors, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	for _, v := range vectors.Messages {
@@ -53,8 +54,8 @@ func TestMediaMetadataAndTrackedPreview(t *testing.T) {
 				t.Fatal(err)
 			}
 			var want, got any
-			json.Unmarshal([]byte(v.Blob.Metadata), &want)
-			json.Unmarshal(blob.Metadata, &got)
+			json.Unmarshal([]byte(v.Blob.Metadata), &want, json.MatchCaseInsensitiveNames(true))
+			json.Unmarshal(blob.Metadata, &got, json.MatchCaseInsensitiveNames(true))
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("metadata got %s want %s", blob.Metadata, v.Blob.Metadata)
 			}
@@ -88,12 +89,12 @@ func TestMediaMetadataAndTrackedPreview(t *testing.T) {
 }
 func TestRotatedVideoMetadata(t *testing.T) {
 	var probe map[string]any
-	json.Unmarshal([]byte(`{"streams":[{"codec_type":"video","width":1920,"height":1080,"side_data_list":[{"side_data_type":"Display Matrix","rotation":-90}]},{"codec_type":"audio"}],"format":{"duration":"3.5"}}`), &probe)
+	json.Unmarshal([]byte(`{"streams":[{"codec_type":"video","width":1920,"height":1080,"side_data_list":[{"side_data_type":"Display Matrix","rotation":-90}]},{"codec_type":"audio"}],"format":{"duration":"3.5"}}`), &probe, json.MatchCaseInsensitiveNames(true))
 	got, err := mediaMetadata(probe, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got["width"] != json.Number("1080.0") || got["height"] != json.Number("1920.0") || got["duration"] != json.Number("3.5") || got["audio"] != true {
+	if got["width"] != jsonx.Number("1080.0") || got["height"] != jsonx.Number("1920.0") || got["duration"] != jsonx.Number("3.5") || got["audio"] != true {
 		t.Fatal(got)
 	}
 }

@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/uuid"
 	"strings"
 	"time"
@@ -14,7 +16,7 @@ import (
 type Account struct {
 	ID                           int64
 	Name, JoinCode, CustomStyles string
-	Settings                     json.RawMessage
+	Settings                     jsontext.Value
 	UpdatedAt                    time.Time
 	HasLogo                      bool
 }
@@ -24,7 +26,7 @@ func (d *DB) Account(ctx context.Context) (Account, error) {
 	var settings string
 	err := d.Read.QueryRowContext(ctx, "SELECT id,name,join_code,coalesce(custom_styles,''),coalesce(settings,'{}'),updated_at,EXISTS(SELECT 1 FROM active_storage_attachments WHERE record_type='Account' AND record_id=accounts.id AND name='logo') FROM accounts ORDER BY id LIMIT 1").
 		Scan(&a.ID, &a.Name, &a.JoinCode, &a.CustomStyles, &settings, timestamp{&a.UpdatedAt}, &a.HasLogo)
-	a.Settings = json.RawMessage(settings)
+	a.Settings = jsontext.Value(settings)
 	return a, err
 }
 
@@ -66,7 +68,7 @@ func (d *DB) UpdateAccount(
 				data = map[string]any{}
 			}
 			data["restrict_room_creation_to_administrators"] = *restrict
-			b, err := json.Marshal(data)
+			b, err := jsonx.Marshal(data)
 			if err != nil {
 				return err
 			}

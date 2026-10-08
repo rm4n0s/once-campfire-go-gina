@@ -5,9 +5,10 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/front/fronttest"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -100,7 +101,7 @@ func TestDirectUploadAndSignedDownloads(t *testing.T) {
 	content := "uploaded through Active Storage"
 	sum := md5.Sum([]byte(content))
 	request := map[string]any{"blob": map[string]any{"filename": "notes.txt", "content_type": "text/plain", "byte_size": len(content), "checksum": base64.StdEncoding.EncodeToString(sum[:])}}
-	raw, _ := json.Marshal(request)
+	raw, _ := jsonx.Marshal(request)
 	response, _ := perform(t, server, "POST", "/rails/active_storage/direct_uploads", "application/json", bytes.NewReader(raw), nil)
 	if response.StatusCode != 401 {
 		t.Fatal("unauthenticated direct upload", response.Status)
@@ -116,7 +117,7 @@ func TestDirectUploadAndSignedDownloads(t *testing.T) {
 			URL string `json:"url"`
 		} `json:"direct_upload"`
 	}
-	if err := json.Unmarshal(data, &result); err != nil {
+	if err := json.Unmarshal(data, &result, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	response, _ = perform(t, server, "PUT", result.Direct.URL, "text/plain", strings.NewReader(content), cookie)

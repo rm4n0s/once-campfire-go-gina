@@ -1,26 +1,24 @@
 package rails
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"strconv"
 	"strings"
 )
 
 // SignStream matches Turbo::StreamsChannel.signed_stream_name: JSON, SHA256, no purpose.
 func (s *Secrets) SignStream(name string) string {
-	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(name); err != nil {
+	encoded, err := jsonx.Marshal(name, jsontext.EscapeForHTML(false))
+	if err != nil {
 		panic(err)
 	}
-	payload := base64.StdEncoding.EncodeToString(bytes.TrimSuffix(buffer.Bytes(), []byte{'\n'}))
+	payload := base64.StdEncoding.EncodeToString(encoded)
 	mac := hmac.New(sha256.New, s.streams)
 	mac.Write([]byte(payload))
 	return payload + "--" + hex.EncodeToString(mac.Sum(nil))
@@ -39,16 +37,14 @@ func (s *Secrets) VerifyStream(signed string) (string, error) {
 	if err != nil {
 		return "", ErrInvalid
 	}
-	var value any
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	if err = decoder.Decode(&value); err != nil {
+	value, err := jsonx.Decode(data)
+	if err != nil {
 		return "", ErrInvalid
 	}
 	switch v := value.(type) {
 	case string:
 		return v, nil
-	case json.Number:
+	case jsonx.Number:
 		return v.String(), nil
 	default:
 		return "", ErrInvalid

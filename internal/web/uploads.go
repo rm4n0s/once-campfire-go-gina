@@ -2,7 +2,8 @@ package web
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/httpx"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/once-campfire-go-gina/internal/database"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/rails"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/storage"
 )
@@ -30,9 +32,9 @@ func (s *Server) registerStorageRoutes() {
 }
 func (s *Server) directUpload(w httpx.ResponseWriter, r *httpx.Request, _ database.User) {
 	var data struct {
-		Blob map[string]json.RawMessage `json:"blob"`
+		Blob map[string]jsontext.Value `json:"blob"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil || data.Blob == nil {
+	if err := json.UnmarshalRead(r.Body, &data); err != nil || data.Blob == nil {
 		httpx.Error(w, "Invalid blob", 400)
 		return
 	}
@@ -45,9 +47,8 @@ func (s *Server) directUpload(w httpx.ResponseWriter, r *httpx.Request, _ databa
 		if json.Unmarshal(raw, &text) == nil {
 			return text, true
 		}
-		var number json.Number
-		if json.Unmarshal(raw, &number) == nil && len(raw) > 0 && string(raw) != "null" {
-			return number.String(), true
+		if raw.Kind() == '0' {
+			return string(raw), true
 		}
 		return "", false
 	}
@@ -78,7 +79,7 @@ func (s *Server) directUpload(w httpx.ResponseWriter, r *httpx.Request, _ databa
 		return
 	}
 	contentType, hasType := scalar("content_type")
-	b := storage.Blob{Filename: filename, Checksum: checksum, ByteSize: size, Metadata: json.RawMessage("{}")}
+	b := storage.Blob{Filename: filename, Checksum: checksum, ByteSize: size, Metadata: jsontext.Value("{}")}
 	if hasType {
 		b.ContentType = &contentType
 	}
@@ -112,7 +113,9 @@ func (s *Server) directUpload(w httpx.ResponseWriter, r *httpx.Request, _ databa
 	response.DirectUpload.URL = s.origin(r) + path
 	response.DirectUpload.Headers = map[string]string{"Content-Type": b.Type()}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	json.NewEncoder(w).Encode(response)
+	if raw, err := jsonx.Line(response); err == nil {
+		w.Write(raw)
+	}
 }
 func (s *Server) diskUpload(w httpx.ResponseWriter, r *httpx.Request, _ database.User) {
 	var token storage.DiskToken

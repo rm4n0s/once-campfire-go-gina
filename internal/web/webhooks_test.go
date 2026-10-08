@@ -2,7 +2,7 @@ package web
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,7 +28,7 @@ func TestBotWebhookReply(t *testing.T) {
 					Room    struct{ Path string }
 					Message struct{ Body struct{ HTML, Plain string } }
 				}
-				if err := json.Unmarshal(raw, &payload); err != nil {
+				if err := json.Unmarshal(raw, &payload, json.MatchCaseInsensitiveNames(true)); err != nil {
 					t.Error(err)
 				}
 				if payload.User.ID != user.ID || payload.Message.Body.Plain != "hello" || !strings.Contains(payload.Room.Path, "/messages") {

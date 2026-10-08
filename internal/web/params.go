@@ -3,10 +3,10 @@ package web
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/httpx"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"io"
 	"mime"
 	"net/url"
@@ -30,14 +30,9 @@ func parseJSONParams(r *httpx.Request) error {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil
 	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	var value any
-	if err = decoder.Decode(&value); err != nil {
+	value, err := jsonx.Decode(raw)
+	if err != nil {
 		return err
-	}
-	if err = decoder.Decode(new(any)); err != io.EOF {
-		return errors.New("multiple JSON values")
 	}
 	nulls := map[string]bool{}
 	values := url.Values{}

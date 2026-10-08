@@ -5,9 +5,9 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"net"
 	"net/http"
 	"os"
@@ -46,7 +46,7 @@ func TestACMEWithPebble(t *testing.T) {
 	dir := t.TempDir()
 
 	certFile, keyFile := pebbleIdentity(t)
-	config, _ := json.Marshal(map[string]any{"pebble": map[string]any{
+	config, _ := jsonx.Marshal(map[string]any{"pebble": map[string]any{
 		"listenAddress": "127.0.0.1:14000", "certificate": certFile, "privateKey": keyFile,
 		"httpPort": 5002, "tlsPort": 5001, "managementListenAddress": "127.0.0.1:15000",
 	}})

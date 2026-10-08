@@ -2,7 +2,7 @@ package storage
 
 import (
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,7 +22,7 @@ func TestMarcelVectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = json.Unmarshal(raw, &vectors); err != nil {
+	if err = json.Unmarshal(raw, &vectors, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	for _, v := range vectors.Marcel {

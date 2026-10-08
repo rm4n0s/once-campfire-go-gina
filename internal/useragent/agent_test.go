@@ -1,7 +1,7 @@
 package useragent
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"reflect"
 	"testing"
@@ -43,7 +43,7 @@ func TestUserAgentVectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = json.Unmarshal(raw, &data); err != nil {
+	if err = json.Unmarshal(raw, &data, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range data.Agents {

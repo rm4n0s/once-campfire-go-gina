@@ -5,7 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -29,7 +29,7 @@ func TestFilenameVectors(t *testing.T) {
 			Escaped                       string `json:"escaped_path"`
 		}
 	}
-	if err = json.Unmarshal(data, &vectors); err != nil {
+	if err = json.Unmarshal(data, &vectors, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	for _, v := range vectors.Filenames {

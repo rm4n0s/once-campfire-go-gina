@@ -2,7 +2,6 @@ package web
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/httpx"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/once-campfire-go-gina/internal/database"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/rails"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/storage"
 )
@@ -329,7 +329,7 @@ func (s *Server) messageJSON(r *httpx.Request, m database.Message) (messageJSON,
 	return result, nil
 }
 func writeJSON(w httpx.ResponseWriter, status int, value any) {
-	data, err := json.Marshal(value)
+	data, err := jsonx.Marshal(value)
 	if err != nil {
 		httpx.Error(w, "Internal server error", 500)
 		return

@@ -11,8 +11,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"net/url"
 	"strings"
 	"time"
@@ -55,32 +57,8 @@ func NewSecrets(secret string) (*Secrets, error) {
 }
 
 func encode(v any) ([]byte, error) {
-	data, err := json.Marshal(v)
 	// ActiveSupport escapes HTML characters but preserves Unicode line separators.
-	// Decode string tokens and re-quote separators only, without changing literal \u text.
-	if err != nil {
-		return nil, err
-	}
-	var out strings.Builder
-	for i := 0; i < len(data); i++ {
-		if data[i] == '\\' && i+1 < len(data) {
-			if i+5 < len(data) && (string(data[i:i+6]) == "\\u2028" || string(data[i:i+6]) == "\\u2029") {
-				if data[i+5] == '8' {
-					out.WriteRune('\u2028')
-				} else {
-					out.WriteRune('\u2029')
-				}
-				i += 5
-			} else {
-				out.WriteByte(data[i])
-				i++
-				out.WriteByte(data[i])
-			}
-		} else {
-			out.WriteByte(data[i])
-		}
-	}
-	return []byte(out.String()), nil
+	return jsonx.Marshal(v, jsontext.EscapeForJS(false))
 }
 
 // Struct field order is part of Rails' signed byte representation.
@@ -112,7 +90,7 @@ func decode64(s string) ([]byte, error) {
 }
 
 func unpack(data []byte, name string, now time.Time, dest any) error {
-	var obj map[string]json.RawMessage
+	var obj map[string]jsontext.Value
 	if strings.HasPrefix(string(data), `{"_rails":{"message":`) && json.Unmarshal(data, &obj) == nil && obj["_rails"] != nil {
 		var meta struct {
 			Message *string `json:"message"`

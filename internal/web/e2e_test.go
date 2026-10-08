@@ -5,8 +5,9 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -32,7 +33,7 @@ var protocols = []struct {
 
 func cableIdentifier(t *testing.T, fields map[string]any) string {
 	t.Helper()
-	raw, err := json.Marshal(fields)
+	raw, err := jsonx.Marshal(fields)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +42,7 @@ func cableIdentifier(t *testing.T, fields map[string]any) string {
 
 func subscribe(t *testing.T, ws *fronttest.WS, identifier string) {
 	t.Helper()
-	command, _ := json.Marshal(map[string]string{"command": "subscribe", "identifier": identifier})
+	command, _ := jsonx.Marshal(map[string]string{"command": "subscribe", "identifier": identifier})
 	if err := ws.Send(string(command)); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +99,7 @@ func TestActionCableOverGina(t *testing.T) {
 			subscribe(t, second, typing)
 
 			// A forged stream name is rejected.
-			forged, _ := json.Marshal(map[string]string{"command": "subscribe", "identifier": cableIdentifier(t, map[string]any{"channel": "RoomMessagesChannel", "signed_stream_name": "forged"})})
+			forged, _ := jsonx.Marshal(map[string]string{"command": "subscribe", "identifier": cableIdentifier(t, map[string]any{"channel": "RoomMessagesChannel", "signed_stream_name": "forged"})})
 			first.Send(string(forged))
 			first.Expect(`"reject_subscription"`, 5*time.Second)
 
@@ -121,14 +122,14 @@ func TestActionCableOverGina(t *testing.T) {
 					Identifier string
 					Message    string
 				}
-				if err := json.Unmarshal([]byte(frame), &envelope); err != nil || envelope.Identifier != messages || !strings.Contains(envelope.Message, "<turbo-stream") {
+				if err := json.Unmarshal([]byte(frame), &envelope, json.MatchCaseInsensitiveNames(true)); err != nil || envelope.Identifier != messages || !strings.Contains(envelope.Message, "<turbo-stream") {
 					t.Fatalf("%s: unexpected frame %s (%v)", name, frame, err)
 				}
 			}
 
 			// Typing notifications travel from one socket to the other.
-			data, _ := json.Marshal(map[string]string{"action": "start"})
-			command, _ := json.Marshal(map[string]string{"command": "message", "identifier": typing, "data": string(data)})
+			data, _ := jsonx.Marshal(map[string]string{"action": "start"})
+			command, _ := jsonx.Marshal(map[string]string{"command": "message", "identifier": typing, "data": string(data)})
 			first.Send(string(command))
 			second.Expect(`"action":"start"`, 5*time.Second)
 

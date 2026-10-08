@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/httpx"
@@ -22,6 +21,7 @@ import (
 	"github.com/rm4n0s/once-campfire-go-gina/internal/database"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/integrations"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/jobs"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/push"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/rails"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/responsebody"
@@ -356,10 +356,11 @@ func (s *Server) health(w httpx.ResponseWriter, r *httpx.Request) {
 	}
 	if format == "json" {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		json.NewEncoder(w).Encode(struct {
+		raw, _ := jsonx.Line(struct {
 			Status    string `json:"status"`
 			Timestamp string `json:"timestamp"`
 		}{"up", time.Now().UTC().Format(time.RFC3339)})
+		w.Write(raw)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

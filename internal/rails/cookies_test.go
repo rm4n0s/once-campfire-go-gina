@@ -2,7 +2,7 @@ package rails
 
 import (
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"os"
 	"reflect"
 	"testing"
@@ -20,7 +20,7 @@ func (c *cookieCase) UnmarshalJSON(b []byte) error {
 		alias
 		Expires string `json:"expires_at"`
 	}
-	if err := json.Unmarshal(b, &v); err != nil {
+	if err := json.Unmarshal(b, &v, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return err
 	}
 	*c = cookieCase(v.alias)
@@ -48,7 +48,7 @@ func TestRailsCookieVectors(t *testing.T) {
 			Wire, Parsed string
 		} `json:"cookie_escaping"`
 	}
-	if err = json.Unmarshal(data, &v); err != nil {
+	if err = json.Unmarshal(data, &v, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	secrets, err := NewSecrets(v.Secret)

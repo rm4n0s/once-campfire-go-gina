@@ -6,6 +6,8 @@ github.com/rm4n0s/gina v0.0.0-20261007161632-9b9a51684d5f h1:ebazPQ/UKxrNt2GAzgL
 github.com/rm4n0s/gina v0.0.0-20261007161632-9b9a51684d5f/go.mod h1:2Mikhi1d0uCoT1xzEivK2ab90NqVwVS6iCHztY8wNlQ=
 github.com/rm4n0s/gina v0.0.0-20261007194033-181727a33be9 h1:AuL3vAQqSoEQ39sxKEPGcN1b690gcw6mZhTfiwmwfzk=
 github.com/rm4n0s/gina v0.0.0-20261007194033-181727a33be9/go.mod h1:2Mikhi1d0uCoT1xzEivK2ab90NqVwVS6iCHztY8wNlQ=
+github.com/rm4n0s/gina v0.0.0-20261008033840-5c9512457017 h1:G7BR9K73/TLeBfnYbg/e7JwWLQPd9oCih1AqzLAHvn4=
+github.com/rm4n0s/gina v0.0.0-20261008033840-5c9512457017/go.mod h1:2Mikhi1d0uCoT1xzEivK2ab90NqVwVS6iCHztY8wNlQ=
 golang.org/x/crypto v0.57.1-0.20260918190515-b4dcfb54b863 h1:3kG0LLrOfvMqZ37MbeJ/uDk5H6tH2L02vx/OcCQ5i2A=
 golang.org/x/crypto v0.57.1-0.20260918190515-b4dcfb54b863/go.mod h1:Fdz0i5U6CoizGwLda9DttjSk6qlZo25zYNtR+ycvuZA=
 golang.org/x/image v0.46.0 h1:b1+oYj0Jbp6K5MDT4i4/eZpYlk3V8SJhhDKh6LBHAyQ=

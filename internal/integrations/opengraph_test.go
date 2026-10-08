@@ -3,7 +3,7 @@ package integrations
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -56,7 +56,7 @@ func TestOpenGraphOracle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = json.Unmarshal(raw, &corpus); err != nil {
+	if err = json.Unmarshal(raw, &corpus, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	var expected []struct {
@@ -70,7 +70,7 @@ func TestOpenGraphOracle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = json.Unmarshal(raw, &expected); err != nil {
+	if err = json.Unmarshal(raw, &expected, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	for i, c := range corpus.Cases {
@@ -123,8 +123,8 @@ func TestOpenGraphOracle(t *testing.T) {
 			}
 			if status == 200 {
 				var gotValue, wantValue any
-				json.Unmarshal(body, &gotValue)
-				json.Unmarshal([]byte(want.Body), &wantValue)
+				json.Unmarshal(body, &gotValue, json.MatchCaseInsensitiveNames(true))
+				json.Unmarshal([]byte(want.Body), &wantValue, json.MatchCaseInsensitiveNames(true))
 				if !reflect.DeepEqual(gotValue, wantValue) {
 					t.Errorf("body got %s want %s", body, want.Body)
 				}

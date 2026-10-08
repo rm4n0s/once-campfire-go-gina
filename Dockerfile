@@ -28,7 +28,7 @@ COPY reference/reference reference/reference
 RUN python3 bin/build-assets
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 go build -tags sqlite_fts5 -trimpath -ldflags='-s -w' -o /out/campfire ./cmd/campfire
+    CGO_ENABLED=1 GOEXPERIMENT=jsonv2 go build -tags sqlite_fts5 -trimpath -ldflags='-s -w' -o /out/campfire ./cmd/campfire
 
 FROM docker.io/library/debian:${DEBIAN_RELEASE}-slim
 

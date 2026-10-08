@@ -3,11 +3,11 @@ package web
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"strings"
 
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/responsebody"
 )
 
@@ -28,7 +28,7 @@ func (s *Server) searchParts(p page, messages responsebody.Part) ([]responsebody
 		SearchResultCount: p.SearchResultCount, RecentSearches: p.RecentSearches,
 		ReturnRoom: p.ReturnRoom,
 	}
-	raw, err := json.Marshal(input)
+	raw, err := jsonx.Marshal(input)
 	if err != nil {
 		return nil, err
 	}

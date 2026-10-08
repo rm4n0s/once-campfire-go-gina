@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/once-campfire-go-gina/internal/database"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/rails"
 	"github.com/rm4n0s/once-campfire-go-gina/internal/storage"
 )
@@ -115,7 +115,7 @@ func (s *Server) deliverWebhook(ctx context.Context, botID, messageID int64) err
 	payload.Message.Body.HTML = rawBody
 	payload.Message.Body.Plain = plain
 	payload.Message.Path = fmt.Sprintf("/rooms/%d/@%d", room.ID, message.ID)
-	raw, err := json.Marshal(payload)
+	raw, err := jsonx.Marshal(payload)
 	if err != nil {
 		return err
 	}

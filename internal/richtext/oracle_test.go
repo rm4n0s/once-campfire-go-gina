@@ -3,8 +3,10 @@ package richtext
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 	"io"
 	"os"
 	"path/filepath"
@@ -38,8 +40,8 @@ func TestRustOracle(t *testing.T) {
 		}
 	}
 	type outcome struct {
-		OK    json.RawMessage `json:"ok"`
-		Error string          `json:"error"`
+		OK    jsontext.Value `json:"ok"`
+		Error string         `json:"error"`
 	}
 	var corpus struct {
 		Users []struct {
@@ -61,7 +63,7 @@ func TestRustOracle(t *testing.T) {
 			BodyHTML                                    outcome `json:"body_html"`
 		}
 	}
-	if err = json.Unmarshal(raw, &corpus); err != nil {
+	if err = json.Unmarshal(raw, &corpus, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
 	users := map[int64]*Mention{}
@@ -133,10 +135,10 @@ func TestRustOracle(t *testing.T) {
 				fieldErr = e
 			}
 			var want any
-			json.Unmarshal(check.want.OK, &want)
-			got, _ := json.Marshal(check.got)
+			json.Unmarshal(check.want.OK, &want, json.MatchCaseInsensitiveNames(true))
+			got, _ := jsonx.Marshal(check.got)
 			var actual any
-			json.Unmarshal(got, &actual)
+			json.Unmarshal(got, &actual, json.MatchCaseInsensitiveNames(true))
 			if check.want.Error != "" && fieldErr != nil || check.want.Error == "" && reflect.DeepEqual(actual, want) || (want == nil && check.got == "") {
 				matched[check.name]++
 				continue
@@ -148,7 +150,7 @@ func TestRustOracle(t *testing.T) {
 			failures = append(failures, mismatch{c.Name, check.name, actual, want, errorText})
 		}
 	}
-	report, _ := json.MarshalIndent(failures, "", "  ")
+	report, _ := jsonx.Marshal(failures, jsontext.Multiline(true), jsontext.WithIndent("  "))
 	if len(failures) > 0 {
 		if err = os.WriteFile(filepath.Join(t.TempDir(), "richtext-differences.json"), report, 0644); err != nil {
 			t.Fatal(err)

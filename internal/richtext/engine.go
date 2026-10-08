@@ -1,7 +1,8 @@
 package richtext
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	xhtml "github.com/rm4n0s/once-campfire-go-gina/internal/html"
+	"github.com/rm4n0s/once-campfire-go-gina/internal/jsonx"
 )
 
 type Mention struct {
@@ -268,7 +270,7 @@ func editable(body string, ctx Context) (string, error) {
 			}
 			setAttr(n, "content-type", ct)
 			if pass == 1 {
-				raw, err := json.Marshal(markup)
+				raw, err := jsonx.Marshal(markup)
 				if err != nil {
 					failure = err
 					return
@@ -669,7 +671,7 @@ func rubyJSON(s string, value any) error {
 		}
 		out.WriteByte(c)
 	}
-	return json.Unmarshal([]byte(out.String()), value)
+	return json.Unmarshal([]byte(out.String()), value, jsontext.AllowDuplicateNames(true))
 }
 
 func removeAttr(n *xhtml.Node, key string) {
